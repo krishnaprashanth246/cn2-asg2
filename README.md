@@ -1,6 +1,6 @@
-#ASSIGNMENT 2
+# ASSIGNMENT 2
 
-##Team:
+## Team:
 	G Vishal Siva Kumar	CS18BTECH11013
 	K Vamshi Krishna Reddy 	CS18BTECH11024
 	P Sai Varshittha 	CS18BTECH11035
