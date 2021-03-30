@@ -1,6 +1,20 @@
 import socket
 import sys
-from datetime import datetime
+import struct
+# from datetime import datetime
+
+def header_def(seq_no, ack_no, ack, fin):
+    header = struct.pack('ii??',source_ip, dest_ip, ack, fin)
+    # header.fin
+    return header
+
+def rdt_send(data, addr, port):
+    header = header_def(0, 0, 0, 0)
+    total_packets = 1024*100
+    timer = 0
+    
+
+
 
 # Creating server socket
 c_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -17,12 +31,15 @@ hostinfo, _, _ = allhostinfo
 s_host = hostinfo[4]
 
 fptr = open('CS3543_100MB','rb')
-#fptr = open('tempfile','rb')
+data = fptr.read(1024*1024*100)
 
+rdt_send(data,s_host[0],s_host[1])
+#fptr = open('tempfile','rb')
+# bytes_sent = 0
 while True:
     # message = input('Client : ')
     bytes_read = fptr.read(1024)
     if not bytes_read:
         break
-    c_socket.sendto(bytes_read, s_host)
-   
+    # bytes_sent = bytes_sent + c_socket.sendto(bytes_read, s_host)
+# print(bytes_sent/1024)

@@ -4,7 +4,8 @@ import time
 import sys
 from datetime import datetime
 
-MAX_CLIENTS = 10
+def rdt_recv(addr, port):
+    
 
 s_soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # creating socket
 
@@ -18,4 +19,3 @@ while True:
     if not data:
     	break
     fileptr.write(data)
-   
