@@ -14,13 +14,15 @@
 #include <stdarg.h>
 #include <dirent.h>
 
-#define BUF_SIZE 2048	//Max buffer size of the data in a frame
-
-/*A frame packet with unique id, length and data*/
-struct frame_t {
-	long int ID;
-	long int length;
-	char data[BUF_SIZE];
+#define PACKET_SIZE (1024) //Max buffer size of the data in a packet
+/*A packet with unique id, length and data*/
+struct packet_t
+{
+    long int ID;
+    long int ack_no;
+    long int length;
+    char data[PACKET_SIZE];
+    bool ack_flag;
 };
 
 /**
@@ -34,6 +36,7 @@ print_error
 * 	@\return	None
 *
 */ 
+using namespace std;
 static void print_error(char *msg)
 {
 	perror(msg);
@@ -45,13 +48,13 @@ static void print_error(char *msg)
 int main(int argc, char **argv)
 {
 	if (argc != 3) {
-		printf("Client: Usage --> ./[%s] [IP Address] [Port Number]\n", argv[0]);  //Should have the IP of the server
+		cout << "Client: Usage --> ./[" << argv[0] << "] [IP Address] [Port Number]\n";  //Should have the IP of the server
 		exit(EXIT_FAILURE);
 	}
 
 	struct sockaddr_in send_addr, from_addr;
 	struct stat st;
-	struct frame_t frame;
+	struct packet_t packet, ack_pkt;
 	struct timeval t_out = {0, 0};
 
 	char cmd_send[50];
@@ -59,8 +62,7 @@ int main(int argc, char **argv)
 	char cmd[10];
 	char ack_send[4] = "ACK";
 	
-	ssize_t numRead = 0;
-	ssize_t length = 0;
+	ssize_t numRead = 0, length = 0;
 	off_t f_size = 0;
 	long int ack_num = 0;
 	int cfd, ack_recv = 0;
@@ -80,13 +82,13 @@ int main(int argc, char **argv)
 	if ((cfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		print_error("CLient: socket");
 
-	for (;;) {
+	while(true) {
 
 		memset(cmd_send, 0, sizeof(cmd_send));
 		memset(cmd, 0, sizeof(cmd));
 		memset(flname, 0, sizeof(flname));
 
-		printf("\n Menu \n Enter any of the following commands \n 1.) get [file_name] \n 2.) put [file_name] \n 3.) delete [file_name] \n 4.) ls \n 5.) exit \n");		
+		cout << "\n Menu \n Enter any of the following commands \n 1.) get [file_name] \n 2.) put [file_name] \n 3.) delete [file_name] \n 4.) ls \n 5.) exit \n";		
 		scanf(" %[^\n]%*c", cmd_send);
 
 		//printf("----> %s\n", cmd_send);
@@ -101,43 +103,48 @@ int main(int argc, char **argv)
 
 		if ((strcmp(cmd, "get") == 0) && (flname[0] != '\0' )) {
 
-			long int total_frame = 0;
-			long int bytes_rec = 0, i = 0;
+			long int total_packet = 0;
+			long int bytes_rec = 0, i = 1;
 
 			t_out.tv_sec = 2;
 			setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); 	//Enable the timeout option if client does not respond
 
-			recvfrom(cfd, &(total_frame), sizeof(total_frame), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length); //Get the total number of frame to recieve
+			recvfrom(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length); //Get the total number of packet to recieve
 
 			t_out.tv_sec = 0;
                 	setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); 	//Disable the timeout option
 			
-			if (total_frame > 0) {
-				sendto(cfd, &(total_frame), sizeof(total_frame), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));
-				printf("----> %ld\n", total_frame);
+			if (total_packet > 0) {
+				sendto(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));
+				printf("----> %ld\n", total_packet);
 				
 				fptr = fopen(flname, "wb");	//open the file in write mode
 
-				/*Recieve all the frames and send the acknowledgement sequentially*/
-				for (i = 1; i <= total_frame; i++)
+				/*Recieve all the packets and send the acknowledgement sequentially*/
+				while (i <= total_packet)
 				{
-					memset(&frame, 0, sizeof(frame));
+					memset(&packet, 0, sizeof(packet));
+					recvfrom(cfd, &(packet), sizeof(packet), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length);  //Recieve the packet
+					memset(&ack_pkt, 0, sizeof(ack_pkt));
+                    ack_pkt.ID = 0;
+                    ack_pkt.length = 0;
+                    ack_pkt.ack_flag = 1;
+                    ack_pkt.ack_no = packet.ID;
+					sendto(cfd, &(ack_pkt), sizeof(ack_pkt), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));	//Send the ack
 
-					recvfrom(cfd, &(frame), sizeof(frame), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length);  //Recieve the frame
-					sendto(cfd, &(frame.ID), sizeof(frame.ID), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));	//Send the ack
-
-					/*Drop the repeated frame*/
-					if ((frame.ID < i) || (frame.ID > i))
+					/*Drop the repeated packet*/
+					if (packet.ID != i)
 						i--;
 					else {
-						fwrite(frame.data, 1, frame.length, fptr);   /*Write the recieved data to the file*/
-						printf("frame.ID ---> %ld	frame.length ---> %ld\n", frame.ID, frame.length);
-						bytes_rec += frame.length;
+						fwrite(packet.data, 1, packet.length, fptr);   /*Write the recieved data to the file*/
+						// printf("packet.ID ---> %ld	packet.length ---> %ld\n", packet.ID, packet.length);
+						bytes_rec += packet.length;
 					}
 
-					if (i == total_frame) {
+					if (i == total_packet) {
 						printf("File recieved\n");
 					}
+					i++;
 				}
 				printf("Total bytes recieved ---> %ld\n", bytes_rec);
 				fclose(fptr);
