@@ -18,11 +18,11 @@
 /*A packet with unique id, length and data*/
 struct packet_t
 {
-    long int ID;
-    long int ack_no;
-    long int length;
-    char data[PACKET_SIZE];
-    bool ack_flag;
+	long int ID;
+	long int ack_no;
+	long int length;
+	char data[PACKET_SIZE];
+	bool ack_flag;
 };
 
 /**
@@ -35,7 +35,7 @@ print_error
 *
 * 	@\return	None
 *
-*/ 
+*/
 using namespace std;
 static void print_error(char *msg)
 {
@@ -47,8 +47,9 @@ static void print_error(char *msg)
 
 int main(int argc, char **argv)
 {
-	if (argc != 3) {
-		cout << "Client: Usage --> ./[" << argv[0] << "] [IP Address] [Port Number]\n";  //Should have the IP of the server
+	if (argc != 3)
+	{
+		cout << "Client: Usage --> ./[" << argv[0] << "] [IP Address] [Port Number]\n"; //Should have the IP of the server
 		exit(EXIT_FAILURE);
 	}
 
@@ -61,7 +62,7 @@ int main(int argc, char **argv)
 	char flname[20];
 	char cmd[10];
 	char ack_send[4] = "ACK";
-	
+
 	ssize_t numRead = 0, length = 0;
 	off_t f_size = 0;
 	long int ack_num = 0;
@@ -82,66 +83,72 @@ int main(int argc, char **argv)
 	if ((cfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		print_error("CLient: socket");
 
-	while(true) {
+	while (true)
+	{
 
 		memset(cmd_send, 0, sizeof(cmd_send));
 		memset(cmd, 0, sizeof(cmd));
 		memset(flname, 0, sizeof(flname));
 
-		cout << "\n Menu \n Enter any of the following commands \n 1.) get [file_name] \n 2.) put [file_name] \n 3.) delete [file_name] \n 4.) ls \n 5.) exit \n";		
+		cout << "\n Menu \n Enter any of the following commands \n 1.) get [file_name] \n 2.) put [file_name] \n 3.) delete [file_name] \n 4.) ls \n 5.) exit \n";
 		scanf(" %[^\n]%*c", cmd_send);
 
 		//printf("----> %s\n", cmd_send);
-		
-		sscanf(cmd_send, "%s %s", cmd, flname);		//parse the user input into command and filename
 
-		if (sendto(cfd, cmd_send, sizeof(cmd_send), 0, (struct sockaddr *) &send_addr, sizeof(send_addr)) == -1) {
+		sscanf(cmd_send, "%s %s", cmd, flname); //parse the user input into command and filename
+
+		if (sendto(cfd, cmd_send, sizeof(cmd_send), 0, (struct sockaddr *)&send_addr, sizeof(send_addr)) == -1)
+		{
 			print_error("Client: send");
 		}
 
-/*----------------------------------------------------------------------"get case"-------------------------------------------------------------------------*/
+		/*----------------------------------------------------------------------"get case"-------------------------------------------------------------------------*/
 
-		if ((strcmp(cmd, "get") == 0) && (flname[0] != '\0' )) {
+		if ((strcmp(cmd, "get") == 0) && (flname[0] != '\0'))
+		{
 
 			long int total_packet = 0;
 			long int bytes_rec = 0, i = 1;
 
 			t_out.tv_sec = 2;
-			setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); 	//Enable the timeout option if client does not respond
+			setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); //Enable the timeout option if client does not respond
 
-			recvfrom(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length); //Get the total number of packet to recieve
+			recvfrom(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *)&from_addr, (socklen_t *)&length); //Get the total number of packet to recieve
 
 			t_out.tv_sec = 0;
-                	setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); 	//Disable the timeout option
-			
-			if (total_packet > 0) {
-				sendto(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));
+			setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval)); //Disable the timeout option
+
+			if (total_packet > 0)
+			{
+				sendto(cfd, &(total_packet), sizeof(total_packet), 0, (struct sockaddr *)&send_addr, sizeof(send_addr));
 				printf("----> %ld\n", total_packet);
-				
-				fptr = fopen(flname, "wb");	//open the file in write mode
+
+				fptr = fopen(flname, "wb"); //open the file in write mode
 
 				/*Recieve all the packets and send the acknowledgement sequentially*/
 				while (i <= total_packet)
 				{
 					memset(&packet, 0, sizeof(packet));
-					recvfrom(cfd, &(packet), sizeof(packet), 0, (struct sockaddr *) &from_addr, (socklen_t *) &length);  //Recieve the packet
+					recvfrom(cfd, &(packet), sizeof(packet), 0, (struct sockaddr *)&from_addr, (socklen_t *)&length); //Recieve the packet
 					memset(&ack_pkt, 0, sizeof(ack_pkt));
-                    ack_pkt.ID = 0;
-                    ack_pkt.length = 0;
-                    ack_pkt.ack_flag = 1;
-                    ack_pkt.ack_no = packet.ID;
-					sendto(cfd, &(ack_pkt), sizeof(ack_pkt), 0, (struct sockaddr *) &send_addr, sizeof(send_addr));	//Send the ack
+					ack_pkt.ID = 0;
+					ack_pkt.length = 0;
+					ack_pkt.ack_flag = 1;
+					ack_pkt.ack_no = packet.ID;
+					sendto(cfd, &(ack_pkt), sizeof(ack_pkt), 0, (struct sockaddr *)&send_addr, sizeof(send_addr)); //Send the ack
 
 					/*Drop the repeated packet*/
 					if (packet.ID != i)
 						i--;
-					else {
-						fwrite(packet.data, 1, packet.length, fptr);   /*Write the recieved data to the file*/
+					else
+					{
+						fwrite(packet.data, 1, packet.length, fptr); /*Write the recieved data to the file*/
 						// printf("packet.ID ---> %ld	packet.length ---> %ld\n", packet.ID, packet.length);
 						bytes_rec += packet.length;
 					}
 
-					if (i == total_packet) {
+					if (i == total_packet)
+					{
 						printf("File recieved\n");
 					}
 					i++;
@@ -149,28 +156,28 @@ int main(int argc, char **argv)
 				printf("Total bytes recieved ---> %ld\n", bytes_rec);
 				fclose(fptr);
 			}
-			else {
+			else
+			{
 				printf("File is empty\n");
 			}
 		}
 
-/*----------------------------------------------------------------------"exit case"-------------------------------------------------------------------------*/
+		/*----------------------------------------------------------------------"exit case"-------------------------------------------------------------------------*/
 
-		else if (strcmp(cmd, "exit") == 0) {
+		else if (strcmp(cmd, "exit") == 0)
+		{
 
 			exit(EXIT_SUCCESS);
-
 		}
 
-/*--------------------------------------------------------------------"Invalid case"-------------------------------------------------------------------------*/
+		/*--------------------------------------------------------------------"Invalid case"-------------------------------------------------------------------------*/
 
-		else {
+		else
+		{
 			printf("--------Invalid Command!----------\n");
 		}
-
-
 	}
-		
+
 	close(cfd);
 
 	exit(EXIT_SUCCESS);

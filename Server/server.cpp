@@ -72,7 +72,8 @@ int main(int argc, char **argv)
     /*Clear the server structure - 'server_addr' and populate it with port and IP address*/
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(argv[1]));
+    int temp = atoi(argv[1]);
+    server_addr.sin_port = htons(temp);
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
     if ((sfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -171,7 +172,7 @@ int main(int argc, char **argv)
 
                         resend_packet++;
 
-                        cout << "packet ---> " << packet.ID << "dropped, " << drop_packet <<"times\n";
+                        // cout << "packet ---> " << packet.ID << "dropped, " << drop_packet <<"times\n";
 
                         /*Enable the timeout flag even if it fails after 200 tries*/
                         if (resend_packet == 200)
