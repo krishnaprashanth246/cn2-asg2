@@ -7,17 +7,18 @@
 #include <time.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <pthread.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <thread>
+#include <mutex>
 
 using namespace std;
-#define FILENAME "CS3543_100MB"
+// #define filename "../../CS3543_100MB"
 #define FILEPATH_C "textfile_back.txt"
 #define MAXSEND 20
 #define PAYLOAD 1400
 
-pthread_mutex_t lck = PTHREAD_MUTEX_INITIALIZER;
+mutex lk;
 
 char *data;
 char *allNodes;
@@ -42,7 +43,7 @@ typedef struct pkt
     char buf[PAYLOAD]; /* Data buffer */
 } pkt;
 
-pthread_t thrd[1];
+thread thrd[1];
 int sockfd;
 
 void error(const char *msg)
@@ -66,7 +67,6 @@ int iterateArrayAgain()
                 iteratingptr = i + 1;
             else
                 iteratingptr = 0;
-            return i;
         }
         i++;
     }
@@ -74,7 +74,7 @@ int iterateArrayAgain()
     return -1;
 }
 
-void *receiveMe(void *arg)
+void receiveMe(void *arg)
 {
     int n = 0; // , i = 0;
                //   LinkedList *requestNodePointer = anchor;
@@ -86,17 +86,15 @@ void *receiveMe(void *arg)
         if (totalPacketsArrived - 1 == totalSeq)
         {
             cout << "all data recved!" << endl;
-            pthread_exit(0);
+            return;
         }
         usleep(100);
-        pthread_mutex_lock(&lck);
+
+        unique_lock<mutex> lck(lk);
         requestIndex = iterateArrayAgain();
-        pthread_mutex_unlock(&lck);
-        if (requestIndex < 0)
-        {
-            // sleep(1);
-        }
-        else if (requestIndex >= 0)
+        lk.unlock();
+
+        if (requestIndex >= 0)
         {
             if (requestIndex <= totalSeq)
             {
@@ -115,26 +113,19 @@ char *openFILE(char *str)
 
     // fp = open(str, O_RDONLY);
     if ((fp = open(str, O_RDONLY)) < 0)
-    {
         error("Error: while opening the file\n");
-    }
 
     /* get the status of the file */
     if (fstat(fp, &statbuf) < 0)
-    {
         error("ERROR: while file status\n");
-    }
 
     /* mmap it , data is a pointer which is mapping the whole file*/
-    data = (char *)mmap((caddr_t)0, statbuf.st_size, PROT_READ, MAP_SHARED, fp, 0);
-
-    if (data == MAP_FAILED)
-    {
+    if ((data = (char *)mmap((caddr_t)0, statbuf.st_size, PROT_READ, MAP_SHARED, fp, 0)) == MAP_FAILED)
         error("ERROR : mmap \n");
-    }
 
     return data;
 }
+
 int deleteNodesFromArray(char **arrayNode, int seqNum)
 {
 
@@ -155,85 +146,76 @@ int deleteNodesFromArray(char **arrayNode, int seqNum)
     }
     return 0;
 }
-void *checkme(void *arg)
+void checkme(void *arg)
 {
-    int totalseq, lefbyte, lastseq, size_p, n = 0;
     pkt sendDG, recvDG;
-    int packetmiss, errn;
+    int totalseq, lefbyte, lastseq, size_p, n = 0;
     socklen_t servlen;
+    int packetmiss, errn;
     servlen = sizeof(serv_addr);
 
     cout << "enter check me client" << endl;
-    //fflush(stdout);
-    // sleep(10);
     for (; true;)
     {
         n = recvfrom(sockfd, &packetmiss, sizeof(int), 0, (struct sockaddr *)&serv_addr, &servlen);
-        //    printf("packetmiss:: %d\n",packetmiss);
+      
         if (n < 0)
-        {
             error("rcv from\n");
-        }
         if (packetmiss < 0)
         {
             cout << "data recv fully" << endl;
-            pthread_exit(0);
+            return;
         }
-        totalseq = filesize / PAYLOAD;
         lefbyte = filesize % PAYLOAD;
-        //
+        totalseq = filesize / PAYLOAD;
+
         size_p = PAYLOAD;
-        if (lefbyte != 0 && totalseq == packetmiss)
-        {
+        if (totalseq == packetmiss && lefbyte != 0)
             size_p = lefbyte;
-        }
-        pthread_mutex_lock(&lck);
-
+        
+        unique_lock<mutex> lck(lk);
         memcpy(sendDG.buf, &data[packetmiss * PAYLOAD], size_p);
-        pthread_mutex_unlock(&lck);
+        lck.unlock();
 
-        sendDG.seqNum = packetmiss;
         sendDG.dataSize = size_p;
         sendDG.retransmit = 1;
+        sendDG.seqNum = packetmiss;
 
-        n = sendto(sockfd, &sendDG, sizeof(pkt), 0, (struct sockaddr *)&serv_addr, servlen);
-        if (n < 0)
+        if ((n = sendto(sockfd, &sendDG, sizeof(pkt), 0, (struct sockaddr *)&serv_addr, servlen)) < 0)
             error("sendto");
     }
 }
 
 int main(int argc, char *argv[])
 {
-    // int count = 0;
-    // int cnt = 0;
-    // int rdbytes = 0;
-    int errn = -1;
-    unsigned char buffer[PAYLOAD];
-    unsigned char *chptr = NULL;
-    struct stat st;
-    int seq = 0, datasize = 0, ack = -1; //, filesize =0;
-    socklen_t fromlen;
-    // int ack = -1;
-    pkt recvDG;
-
-    //char *data;
 
     FILE *fp = NULL;
+    pkt recvDG;
 
+    int errn = -1;
+    int seq = 0, datasize = 0, ack = -1;
     int portno, n;
-    struct hostent *server;
     int i, j;
 
-    if (argc != 3)
+    unsigned char buffer[PAYLOAD];
+    unsigned char *chptr = NULL;
+
+    socklen_t fromlen;
+
+    struct stat st;
+    struct hostent *server;
+
+    if (argc != 4)
     {
-        cerr << "usage:- " << argv[0] << " <hostname> <port>\n";
+        cerr << "usage:- " << argv[0] << " <hostname> <port> <filename>\n";
         exit(0);
     }
+    
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     portno = atoi(argv[2]);
     if (sockfd < 0)
         error("ERROR opening socket\n");
-    // server = gethostbyname(argv[1]);
+
     if ((server = gethostbyname(argv[1])) == NULL)
     {
         cerr << ("ERROR, no such host\n");
@@ -260,38 +242,31 @@ int main(int argc, char *argv[])
         error("memset:");
     }
 
-    if ((fp = fopen(FILENAME, "r")) == NULL)
+    if ((fp = fopen(argv[3], "r")) == NULL)
     {
         error("fopen:");
     }
 
-    if (stat(FILENAME, &st) == 0)
+    if (stat(argv[3], &st) == 0)
     {
         filesize = st.st_size;
-        // printf("The size of this file is %d.\n", filesize);
         cout << "The size of this file is " << filesize << endl;
     }
 
-    for (i = 0; i < 10; i++)
+    i = 0;
+    while (i < MAXSEND)
     {
         n = sendto(sockfd, &filesize, sizeof(filesize), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-        cout << filesize << '\n';
-        if (n < 0)
-            error("sendto");
+        i++;
     }
-    pthread_mutex_lock(&lck);
+    cout << " filesize sent\n";
+    // cout << filesize << '\n';
 
-    data = openFILE(FILENAME);
+    data = openFILE(argv[3]);
     datasize = statbuf.st_size;
 
-    pthread_mutex_unlock(&lck);
 
-    if ((errn = pthread_create(&thrd[0], 0, checkme, (void *)0)))
-    {
-        fprintf(stderr, "pthread_create[0] %s\n", strerror(errn));
-        pthread_exit(0);
-    }
-
+    thrd[0] = thread(checkme, (void*)0);
     if (clock_gettime(CLOCK_REALTIME, &start) == -1)
     {
         error("clock get time");
@@ -315,11 +290,11 @@ int main(int argc, char *argv[])
         {
             chunk = share;
         }
-        pthread_mutex_lock(&lck);
 
+        unique_lock<mutex> lck(lk);
         memcpy(sendDG.buf, &data[seq * PAYLOAD], chunk);
+        lck.unlock();
 
-        pthread_mutex_unlock(&lck);
 
         sendDG.seqNum = seq;
         sendDG.dataSize = chunk;
@@ -330,11 +305,10 @@ int main(int argc, char *argv[])
         seq++;
         datasize -= chunk;
     }
-    //printf("join");
 
-    pthread_join(thrd[0], 0);
+    thrd[0].join();
 
-        if(clock_gettime(CLOCK_REALTIME,&stop) == -1){
+    if(clock_gettime(CLOCK_REALTIME,&stop) == -1){
         error("clock get time stop");
     }
     /*
@@ -347,9 +321,10 @@ int main(int argc, char *argv[])
     */
     munmap(data, statbuf.st_size);
 
-    totaltime = (double)(stop.tv_sec - start.tv_sec) + ((double)(stop.tv_nsec - start.tv_nsec) / 1e9);
+    totaltime = (double)(stop.tv_sec - start.tv_sec) ;
+    totaltime += ((double)(stop.tv_nsec - start.tv_nsec) / 1e9);
 
-    printf("Time taken to complete : %lf sec", totaltime);
+    cout << "Time taken to complete : " << totaltime << "secs\n";
 
     fclose(fp);
     close(sockfd);

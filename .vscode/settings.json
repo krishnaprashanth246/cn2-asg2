@@ -2,6 +2,7 @@
     "files.associations": {
         "forward_list": "cpp",
         "fstream": "cpp",
-        "mutex": "cpp"
+        "mutex": "cpp",
+        "ostream": "cpp"
     }
 }
