@@ -14,8 +14,7 @@
 
 using namespace std;
 // #define filename "../../CS3543_100MB"
-#define FILEPATH_C "textfile_back.txt"
-#define MAXSEND 20
+#define MAXSEND 10
 #define PAYLOAD 1400
 
 mutex lk;
@@ -36,10 +35,10 @@ double totaltime;
 
 typedef struct pkt
 {
+    int resend;
     uint32_t ts;       /* time stamp */
-    uint32_t dataSize; /* datasize , normally it will be 1460*/
     uint32_t seqNum;   /* store sequence # */
-    int retransmit;
+    uint32_t dataSize; /* datasize , normally it will be 1460*/
     char buf[PAYLOAD]; /* Data buffer */
 } pkt;
 
@@ -76,16 +75,13 @@ int iterateArrayAgain()
 
 void receiveMe(void *arg)
 {
-    int n = 0; // , i = 0;
-               //   LinkedList *requestNodePointer = anchor;
-               //int ack = -1;
+    int n = 0; 
     int requestIndex;
-    cout << "enter receiveMe server" << endl;
     for (; true;)
     {
         if (totalPacketsArrived - 1 == totalSeq)
         {
-            cout << "all data recved!" << endl;
+            cout << "File received!" << endl;
             return;
         }
         usleep(100);
@@ -94,13 +90,13 @@ void receiveMe(void *arg)
         requestIndex = iterateArrayAgain();
         lk.unlock();
 
-        if (requestIndex >= 0)
+        if (requestIndex <= totalSeq)
         {
-            if (requestIndex <= totalSeq)
+            if (requestIndex >= 0)
             {
                 n = sendto(sockfd, &requestIndex, sizeof(int), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                if (n < 0)
-                    error("sendto\n");
+                if (!(n >= 0))
+                    error("error occured in sendto\n");
             }
         }
     }
@@ -126,26 +122,6 @@ char *openFILE(char *str)
     return data;
 }
 
-int deleteNodesFromArray(char **arrayNode, int seqNum)
-{
-
-    if (seqNum >= 0)
-    {
-        if(seqNum <= totalSeq)
-        {
-            if (allNodes[seqNum] == 0)
-            {
-                allNodes[seqNum] = 1;
-                return 1;
-            }
-            else
-            {
-                return 0;
-            }
-        }
-    }
-    return 0;
-}
 void checkme(void *arg)
 {
     pkt sendDG, recvDG;
@@ -154,16 +130,13 @@ void checkme(void *arg)
     int packetmiss, errn;
     servlen = sizeof(serv_addr);
 
-    cout << "enter check me client" << endl;
     for (; true;)
     {
-        n = recvfrom(sockfd, &packetmiss, sizeof(int), 0, (struct sockaddr *)&serv_addr, &servlen);
-      
-        if (n < 0)
-            error("rcv from\n");
+        if ((n = recvfrom(sockfd, &packetmiss, sizeof(int), 0, (struct sockaddr *)&serv_addr, &servlen)) < 0)
+            error("error occured in  recvfrom\n");
         if (packetmiss < 0)
         {
-            cout << "data recv fully" << endl;
+            cout << "complete file sent" << endl;
             return;
         }
         lefbyte = filesize % PAYLOAD;
@@ -178,7 +151,7 @@ void checkme(void *arg)
         lck.unlock();
 
         sendDG.dataSize = size_p;
-        sendDG.retransmit = 1;
+        sendDG.resend = 1;
         sendDG.seqNum = packetmiss;
 
         if ((n = sendto(sockfd, &sendDG, sizeof(pkt), 0, (struct sockaddr *)&serv_addr, servlen)) < 0)
@@ -221,31 +194,24 @@ int main(int argc, char *argv[])
         cerr << ("ERROR, no such host\n");
         exit(0);
     }
+
+    long int sndsize = 50000000;
     bzero((char *)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
     serv_addr.sin_port = htons(portno);
 
-    long int sndsize = 50000000;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (char *)&sndsize, (long int)sizeof(sndsize)) == -1)
-    {
         cout << "error with setsocket" << endl;
-    }
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (char *)&sndsize, (long int)sizeof(sndsize)) == -1)
-    {
         cout << "error with setsocket" << endl;
-    }
 
     if ((chptr = (unsigned char *)memset(buffer, '\0', PAYLOAD)) == NULL)
-    {
-        error("memset:");
-    }
+        error("error occured in memset:");
 
     if ((fp = fopen(argv[3], "r")) == NULL)
-    {
-        error("fopen:");
-    }
+        error("error occured in fopen:");
 
     if (stat(argv[3], &st) == 0)
     {
@@ -259,8 +225,7 @@ int main(int argc, char *argv[])
         n = sendto(sockfd, &filesize, sizeof(filesize), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
         i++;
     }
-    cout << " filesize sent\n";
-    // cout << filesize << '\n';
+    // cout << "filesize sent\n";
 
     data = openFILE(argv[3]);
     datasize = statbuf.st_size;
@@ -268,11 +233,8 @@ int main(int argc, char *argv[])
 
     thrd[0] = thread(checkme, (void*)0);
     if (clock_gettime(CLOCK_REALTIME, &start) == -1)
-    {
-        error("clock get time");
-    }
+        error("error occured in clock get time");
 
-    //   while (fgets(buffer ,PAYLOAD , fp) != NULL ) {
     while (datasize > 0)
     {
         pkt sendDG;
@@ -283,49 +245,34 @@ int main(int argc, char *argv[])
         share = datasize;
 
         if (share - chunk >= 0)
-        {
             share = share - chunk;
-        }
         else
-        {
             chunk = share;
-        }
 
         unique_lock<mutex> lck(lk);
         memcpy(sendDG.buf, &data[seq * PAYLOAD], chunk);
         lck.unlock();
 
-
         sendDG.seqNum = seq;
+        sendDG.resend = 0;
         sendDG.dataSize = chunk;
-        sendDG.retransmit = 0;
-        // printf("SeqNum= %d\n",sendDG.seqNum);
         usleep(100);
         sendto(sockfd, &sendDG, sizeof(sendDG), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-        seq++;
         datasize -= chunk;
+        seq++;
     }
 
     thrd[0].join();
 
-    if(clock_gettime(CLOCK_REALTIME,&stop) == -1){
-        error("clock get time stop");
-    }
-    /*
-    totaltime = (stop.tv_sec - start.tv_sec)+(double)(stop.tv_nsec - start.tv_nsec)/1e9;
-    
-    printf("Time taken to complete : %f sec",totaltime);
-    */
-    //fclose(fp);
-    /* unmap the data 
-    */
+    if(clock_gettime(CLOCK_REALTIME,&stop) == -1)
+        error("error occured in  clock get time stop");
     munmap(data, statbuf.st_size);
 
     totaltime = (double)(stop.tv_sec - start.tv_sec) ;
     totaltime += ((double)(stop.tv_nsec - start.tv_nsec) / 1e9);
 
     cout << "Time taken to complete : " << totaltime << "secs\n";
-
+    cout << "speed = " << ((double)filesize)/(totaltime*1024*1024) << " MBps\n";
     fclose(fp);
     close(sockfd);
     return 0;
