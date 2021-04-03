@@ -20,7 +20,7 @@ using namespace std;
 mutex lk;
 
 char *data;
-char *allNodes;
+char *nodes;
 int iteratingptr;
 int filesize = 0;
 
@@ -35,7 +35,7 @@ double totaltime;
 
 typedef struct pkt
 {
-    int resend;
+    int retransmit;
     uint32_t ts;       /* time stamp */
     uint32_t seqNum;   /* store sequence # */
     uint32_t dataSize; /* datasize , normally it will be 1460*/
@@ -54,13 +54,13 @@ void error(const char *msg)
 int iterateArrayAgain()
 {
     int i = iteratingptr;
-    if (allNodes == NULL)
+    if (nodes == NULL)
     {
         return -1;
     }
     while (i <= totalSeq)
     {
-        if (allNodes[i] == 0)
+        if (nodes[i] == 0)
         {
             if (i != totalSeq)
                 iteratingptr = i + 1;
@@ -151,7 +151,7 @@ void checkme(void *arg)
         lck.unlock();
 
         sendDG.dataSize = size_p;
-        sendDG.resend = 1;
+        sendDG.retransmit = 1;
         sendDG.seqNum = packetmiss;
 
         if ((n = sendto(sockfd, &sendDG, sizeof(pkt), 0, (struct sockaddr *)&serv_addr, servlen)) < 0)
@@ -254,7 +254,7 @@ int main(int argc, char *argv[])
         lck.unlock();
 
         sendDG.seqNum = seq;
-        sendDG.resend = 0;
+        sendDG.retransmit = 0;
         sendDG.dataSize = chunk;
         usleep(100);
         sendto(sockfd, &sendDG, sizeof(sendDG), 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
